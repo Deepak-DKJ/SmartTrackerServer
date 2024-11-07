@@ -4,7 +4,7 @@ const app = express.Router();
 require('dotenv').config();
 app.use(cors(
     {
-        origin: ["https://test-gen-ai.vercel.app", "http://localhost:3000"],
+        origin: ["https://item-gen-ai.vercel.app", "http://localhost:3000", "http://192.168.1.116:3000"],
         methods: ["POST", "GET", "PUT", "DELETE"],
         credentials: true
     }
@@ -20,8 +20,8 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
 const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-pro" });
 
-const formatDate = (dateString) => {
-    const date = new Date(dateString);
+const formatDate = (daitemring) => {
+    const date = new Date(daitemring);
     const day = String(date.getDate()).padStart(2, '0'); // Add leading zero
     const month = String(date.getMonth() + 1).padStart(2, '0'); // Add leading zero
     const year = date.getFullYear();
@@ -49,62 +49,22 @@ app.get("/getallitems", fetchUserFromToken, async (req, res) => {
 
         data[formattedDate].push(entry);
     }
+    for (const date in data) {
+        data[date].reverse();
+    }
     res.json(data)
 })
 
-app.get("/getprofile", fetchUserFromToken, async (req, res) => {
-    // console.log(req.ID)
-    const tests = await Test.find({ user: req.ID })
-    let data = {}
-    const total = tests.length;
-    let pending = 0
-    for (const ind in tests) {
-        const test = tests[ind]
-        if (test.scores.selfscore === -1000)
-            pending++;
-    }
-    data["total"] = total
-    data["pending"] = pending
-    res.json(data)
-})
-
-app.get("/gettest/:id", fetchUserFromToken, async (req, res) => {
-    try {
-        const userid = req.ID; // Extract user ID from middleware
-        const testId = req.params.id; // Extract test ID from URL params
-
-        const test = await Test.findOne({ _id: testId, user: userid });
-
-        if (!test) {
-            return res.status(404).json({ error: "Test not found or unauthorized" });
-        }
-
-        const data = {
-            "testTitle": test.testtitle,
-            "testDuration": test.testduration,
-            "questions": test.questions,
-            "crtAnswer": test.correctanswerpoints,
-            "negMarking": test.negativemarking,
-            "score": test.scores.selfscore,
-            "total": test.scores.totalscore,
-            "correct": test.scores.correct,
-            "wrong": test.scores.wrong
-        }
-
-        res.status(200).json({ "testDetails": data });
-        return
-    } catch (error) {
-        console.error(error.message);
-        return res.status(500).json({ error: "Internal Server Error" });
-    }
-})
+function capitalizeFirstLetter(val) {
+    return String(val).charAt(0).toUpperCase() + String(val).slice(1);
+}
 
 app.post("/additem", fetchUserFromToken, async (req, res) => {
     try {
         const _id = req.ID
         const input_data = req.body.inp
         const dt = req.body.date
-        console.log(dt)
+        // console.log(dt)
 
         let prompt = `You are given the following categories for type 'Expense': Groceries, Household, Travel & Fuel, Healthcare, Entertainment, Shopping, Premium or Others.
         And for type 'Earning': Salary, Savings, Investments, Rental Income, Refunds, Pensions or Others.
@@ -124,12 +84,10 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
 
         Input text: "${input_data}"`;
         
-        console.log(input_data)
-        console.log(process.env.API_KEY)
         const result = await model.generateContent(prompt);
         let dat = result.response.text()
         dat = dat.replace(/^\s+|\s+$/g, '');
-        console.log("AI RESPONSE: ", dat);
+        // console.log("AI RESPONSE: ", dat);
         let fields = dat.split("$").filter(line => line.trim() !== "");
 
         if (fields.length !== 5) {
@@ -147,12 +105,24 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
             const fieldName = fieldNames[ind];
             let fieldData = fields[ind];
             if(fieldData.trim() !== "NA")
+            {
+                if(Number(ind) === 0)
+                fieldData = capitalizeFirstLetter(fieldData)
                 item_details[fieldName] = fieldData;
+                    
+            }    
+            else
+            {
+                if(Number(ind) == 2)
+                {
+                    return res.status(500).json({ error: `Couldn't add entry as amount not found!` });
+                }
+            }
         }
         
         item_details["user"] = _id
         item_details["date"] = dt
-        console.log(item_details)
+        // console.log(item_details)
 
         // Create a new item entry
         const newItem = new Item(item_details);
@@ -173,35 +143,29 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
     }
 })
 
-app.put("/updatetest/:id", fetchUserFromToken, async (req, res) => {
+app.put("/updateitem/:id", fetchUserFromToken, async (req, res) => {
     try {
         const userid = req.ID; // Extract user ID from middleware
-        const testId = req.params.id; // Extract test ID from URL params
+        const itemId = req.params.id; // Extract item ID from URL params
         // console.log(req.body)
         const details = req.body; // New data with responses
+        // console.log(details)
+        const item = await Item.findOne({ _id: itemId, user: userid });
 
-        const test = await Test.findOne({ _id: testId, user: userid });
-
-        if (!test) {
-            return res.status(404).json({ error: "Test not found or unauthorized" });
+        if (!item) {
+            return res.status(404).json({ error: "Item not found or unauthorized" });
         }
 
-        if ("testScore" in details) {
-            test.questions = details.updatedQuestionsList
-            test.scores.selfscore = details.testScore
-            test.scores.correct = details.correctQsns
-            test.scores.wrong = details.wrongQsns
-        }
-        else {
-            test.testtitle = details.title
-            test.testduration = details.duration
-            test.correctanswerpoints = details.correctMarks;
-            test.negativemarking = details.negMarks;
-            test.scores.totalscore = (details.qsCount) * (details.correctMarks)
-        }
-        await test.save();
+        
+        item.itemName = details.name
+        item.quantity = details.quant
+        item.totalPrice = details.amt;
+        item.type = details.type;
+        item.category = details.catry
+        
+        await item.save();
 
-        res.status(200).json({ message: "Test updated successfully" });
+        res.status(200).json({ message: "item updated successfully" });
         return
     } catch (error) {
         console.error(error.message);
@@ -209,22 +173,22 @@ app.put("/updatetest/:id", fetchUserFromToken, async (req, res) => {
     }
 })
 
-app.delete("/deletetest/:id", fetchUserFromToken, async (req, res) => {
+app.delete("/deleteitem/:id", fetchUserFromToken, async (req, res) => {
     try {
         const _id = req.ID; // Extract user ID from middleware
-        const testId = req.params.id; // Extract test ID from URL params
+        const itemId = req.params.id; // Extract item ID from URL params
 
-        // Find the test and delete it if it belongs to the authenticated user
-        const deletedTest = await Test.findOneAndDelete({ _id: testId, user: _id });
+        // Find the item and delete it if it belongs to the authenticated user
+        const deleteditem = await Item.findOneAndDelete({ _id: itemId, user: _id });
 
-        // Check if the test was found and deleted
-        if (!deletedTest) {
-            return res.status(404).json({ error: "Test not found or unauthorized" });
+        // Check if the item was found and deleted
+        if (!deleteditem) {
+            return res.status(404).json({ error: "item not found or unauthorized" });
         }
 
         return res.status(200).json({
-            message: "Test deleted successfully",
-            test: deletedTest
+            message: "item deleted successfully",
+            item: deleteditem
         });
     } catch (error) {
         console.error(error.message);
