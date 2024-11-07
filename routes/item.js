@@ -4,7 +4,7 @@ const app = express.Router();
 require('dotenv').config();
 app.use(cors(
     {
-        origin: ["https://item-gen-ai.vercel.app", "http://localhost:3000", "http://192.168.1.116:3000"],
+        origin: ["https://smart-tracker-ai.vercel.app", "http://localhost:3000", "http://192.168.1.116:3000"],
         methods: ["POST", "GET", "PUT", "DELETE"],
         credentials: true
     }
