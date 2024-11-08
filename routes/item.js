@@ -90,7 +90,15 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
         // console.log("AI RESPONSE: ", dat);
         let fields = dat.split("$").filter(line => line.trim() !== "");
 
-        if (fields.length !== 5) {
+        if (fields.length < 5) {
+            return res.status(500).json({ error: `Could not generate data for the entry!` });
+            return res.status(500).json({
+                message: "Could not generate data for the entry",
+                airesp: dat
+            });
+        }
+        if (fields.length > 5) {
+            return res.status(500).json({ error: `Please enter one item at a time!` });
             return res.status(500).json({
                 message: "Could not generate data for the entry",
                 airesp: dat
