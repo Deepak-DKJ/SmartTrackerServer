@@ -18,7 +18,8 @@ const fetchUserFromToken = require('../middleware/getUserDetails');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const model = genAI.getGenerativeModel({ model: "models/gemini-1.5-pro" });
+const modelPro = genAI.getGenerativeModel({ model: "models/gemini-1.5-pro" });
+const modelFlash = genAI.getGenerativeModel({ model: "models/gemini-1.5-flash" });
 
 const formatDate = (daitemring) => {
     const date = new Date(daitemring);
@@ -77,32 +78,38 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
         5. Category
 
         If you are NOT sure in any field, return 'NA' for that field. 
-        Output format: "Itemname$Quantity$TotalPrice$Type$Category"
+        Output format: Itemname$Quantity$TotalPrice$Type$Category
 
         Example: "Char litre dudh assi rupya"
-        Output: "dudh$4 litre$80$Expense$Groceries"
+        Output: dudh$4 litre$80$Expense$Groceries
 
         Input text: "${input_data}"`;
-        
-        const result = await model.generateContent(prompt);
-        let dat = result.response.text()
+        let dat;
+
+        try {
+            const result = await modelPro.generateContent(prompt);
+            dat = result.response.text();
+        } catch (error) {
+            console.error("Pro model error: ", error.message);
+            if (error.message.includes("[429 Too Many Requests]")) {
+                const result = await modelFlash.generateContent(prompt);
+                dat = result.response.text();
+            } else {
+                // Re-throw other errors to be handled in the outer catch
+                throw error;
+            }
+        }
+    
+
         dat = dat.replace(/^\s+|\s+$/g, '');
-        // console.log("AI RESPONSE: ", dat);
+
         let fields = dat.split("$").filter(line => line.trim() !== "");
 
         if (fields.length < 5) {
             return res.status(500).json({ error: `Could not generate data for the entry!` });
-            return res.status(500).json({
-                message: "Could not generate data for the entry",
-                airesp: dat
-            });
         }
         if (fields.length > 5) {
             return res.status(500).json({ error: `Please enter one item at a time!` });
-            return res.status(500).json({
-                message: "Could not generate data for the entry",
-                airesp: dat
-            });
         }
 
         let item_details = {}
@@ -145,7 +152,7 @@ app.post("/additem", fetchUserFromToken, async (req, res) => {
         });
 
     } catch (error) {
-        console.error(error.message);
+        console.error("MSG?: ", error.message);
         // return res.status(500).json({ error: "Internal Server Error" });
         return res.status(500).json({ error: error.message });
     }
